@@ -1,41 +1,106 @@
-Enterprise Attack Simulation & Defensive Monitoring Lab
-1. Introdução
-Este projeto apresenta a construção de um laboratório de simulação de ataques e monitoramento defensivo com o objetivo de demonstrar técnicas de detecção e resposta a incidentes utilizando o SIEM Wazuh. O ambiente foi projetado para simular ataques comuns encontrados em redes corporativas e demonstrar como ferramentas de segurança podem detectar, correlacionar e responder automaticamente a atividades maliciosas.
-2. Arquitetura do Laboratório
-A infraestrutura é composta pelos seguintes componentes:
+<div align="center">
 
-Sistema Atacante: Kali Linux.
-Sistema Alvo: Ubuntu Server.
-Plataforma SIEM: Wazuh.
-Serviço Monitorado: OpenSSH.
+# 🛡️ Enterprise Attack Simulation & Defensive Monitoring Lab
 
-3. Simulação de Ataque (Red Team)
-Nesta etapa, foi realizado um ataque de força bruta contra o serviço SSH utilizando a ferramenta Hydra.
+**A full-cycle SOC simulation: Red Team attack → SIEM detection → automated Blue Team response**
 
-Comando utilizado: hydra -l root -P rockyou.txt ssh://192.168.1.106.
+![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-blue?style=flat-square)
+![MITRE](https://img.shields.io/badge/Framework-MITRE%20ATT%26CK-red?style=flat-square)
+![Kali](https://img.shields.io/badge/Attacker-Kali%20Linux-557C94?style=flat-square)
+![Ubuntu](https://img.shields.io/badge/Target-Ubuntu%20Server-E95420?style=flat-square)
+![License](https://img.shields.io/badge/Purpose-Lab%20%2F%20Learning-green?style=flat-square)
 
-O ataque gera múltiplas tentativas de autenticação.
+</div>
 
-As tentativas de login foram registradas no arquivo de log do sistema: /var/log/auth.log
+---
 
-4. Detecção e Monitoramento (Blue Team)
-Os logs gerados no servidor alvo foram coletados automaticamente pelo agente do Wazuh. O SIEM analisou os logs e detectou padrões de comportamento suspeitos através de regras personalizadas.
+## Overview
 
-Regras Personalizadas (local_rules.xml)Foram implementadas regras para identificar o ataque:Regra 100200: Detecta uma falha de login individual.Regra 100201: Detecta o ataque de força bruta (frequência de 5 tentativas em 60 segundos).Mapeamento MITRE ATT&CK: Técnica T1110 (Brute Force).
+This project documents the construction of a home enterprise security lab designed to simulate real-world attacks and demonstrate detection and incident response capabilities using the Wazuh SIEM platform. The environment replicates attack patterns found in corporate networks and showcases how security tooling can detect, correlate, and automatically respond to malicious activity.
 
-5. Resposta Automática (Active Response)
-Foi configurado o recurso Active Response do Wazuh para bloquear automaticamente o IP atacante.
-Ação: Execução do script firewall-drop.
+---
 
-Configuração de Bloqueio: O IP é bloqueado por um tempo determinado (timeout) de 180 segundos.
+## Architecture
 
-Implementação Técnica: O bloqueio foi aplicado no firewall do sistema utilizando nftables.
+| Role | System | Purpose |
+|------|--------|---------|
+| ⚔️ Attacker | Kali Linux | Offensive operations (Red Team) |
+| 🖥️ Target | Ubuntu Server | SSH service exposed as attack surface |
+| 📊 SIEM | Wazuh | Log collection, correlation, active response |
+| 🔑 Service | OpenSSH | Monitored authentication endpoint |
 
-Resultado: Após o bloqueio, novas conexões SSH foram impedidas, resultando em Connection timed out para o atacante.
+---
 
-6. Resultados e Visibilidade
-O dashboard do Wazuh fornece visibilidade centralizada, permitindo identificar padrões de ataque e verificar as respostas automáticas em tempo real. Este laboratório demonstrou com sucesso:
+## Phase 1 — Red Team: Brute Force Attack
 
-Detecção de ataques SSH.
-Correlação de eventos e integração com MITRE ATT&CK.
-Resposta automática com bloqueio de IP.
+A credential brute-force attack was launched against the SSH service using Hydra, simulating an external threat actor attempting to gain unauthorized access.
+
+````bash
+hydra -l root -P rockyou.txt ssh://192.168.1.106
+````
+
+**What happens:** Hydra generates hundreds of authentication attempts per minute, all of which are written to the target's authentication log at `/var/log/auth.log`.
+
+---
+
+## Phase 2 — Blue Team: Detection & Monitoring
+
+The Wazuh agent on the target server continuously forwards logs to the SIEM. Custom rules were created in `local_rules.xml` to identify the attack pattern:
+
+````xml
+<!-- Rule 100200: Single SSH login failure -->
+<rule id="100200" level="5">
+  <if_matched_sid>5716</if_matched_sid>
+  <description>SSH authentication failure detected.</description>
+  <mitre><id>T1110</id></mitre>
+</rule>
+
+<!-- Rule 100201: Brute force pattern (5 failures in 60s) -->
+<rule id="100201" level="10" frequency="5" timeframe="60">
+  <if_matched_sid>100200</if_matched_sid>
+  <description>SSH brute force attack detected.</description>
+  <mitre><id>T1110</id></mitre>
+</rule>
+````
+
+**MITRE ATT&CK mapping:** [T1110 — Brute Force](https://attack.mitre.org/techniques/T1110/)
+
+---
+
+## Phase 3 — Active Response: Automated Blocking
+
+Wazuh's Active Response module was configured to automatically block the attacker's IP upon rule 100201 triggering — no human intervention required.
+
+| Parameter | Value |
+|-----------|-------|
+| Script | `firewall-drop` |
+| Mechanism | `nftables` firewall rule |
+| Block duration | 180 seconds |
+| Attacker result | `ssh: connect to host [...] port 22: Connection timed out` |
+
+---
+
+## Results
+
+The Wazuh dashboard provides centralized visibility across the full attack lifecycle:
+
+- **Detection** — SSH brute-force attacks identified in real time
+- **Correlation** — Events mapped to MITRE ATT&CK technique T1110
+- **Response** — Automatic IP blocking via nftables within seconds of detection
+- **Visibility** — Full audit trail available in the SIEM dashboard
+
+---
+
+## Tech Stack
+
+- [Wazuh](https://wazuh.com/) — open-source SIEM & XDR
+- [Hydra](https://github.com/vanhauser-thc/thc-hydra) — network login brute-forcer
+- [MITRE ATT&CK](https://attack.mitre.org/) — adversary tactics & techniques framework
+- `nftables` — Linux kernel firewall used for IP blocking
+- OpenSSH — target service
+
+---
+
+## Disclaimer
+
+> This lab was built in an isolated private network for educational purposes only. All attacks were conducted against systems I own and control. Do not use these techniques against systems without explicit authorization.
